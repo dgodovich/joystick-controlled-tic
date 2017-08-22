@@ -6,6 +6,7 @@
 #define YLOWLIM 3
 #define XJOYSTICK 22
 #define YJOYSTICK 23
+#define SELECTBUTTON 10 // all pins where arbitrarily chosen
 #define THRESHOLD 20 //dead space for joystick zero
 
 TicI2C ticx(14);
@@ -22,6 +23,7 @@ pinMode(YHIGHLIM, INPUT);
 pinMode(YLOWLIM, INPUT);
 pinMode(XJOYSTICK, INPUT);
 pinMode(YJOYSTICK, INPUT);
+pinMode(SELECTBUTTON, INPUT_PULLUP); //when select button is pressed, it shorts to ground so input_pullup is the best option
 x_zero = analogRead(XJOYSTICK);
 y_zero = analogRead(YJOYSTICK);
 }
@@ -32,6 +34,23 @@ void tic_initialize(){
   delay(20);
   ticx.exitSafeStart();
   ticy.exitSafeStart();
+}
+
+tic_initialize();
+
+void tic_energize(){
+  //change the energy state of the motor based on input from the tic and controlled by the joystick select button
+  if digitalRead(SELECTBUTTON) == HIGH{
+    break;
+  }
+  else if digitalRead(SELECTBUTTON) == LOW{
+    bool state = tic.getEnergized();
+    if state == true{
+      tic.Deenergize();
+    }else if state == false{
+      tic.Energize();
+    }
+  }
 }
 
 long transform(int analog_value){
@@ -55,13 +74,14 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
     result = transform(analog_value_zeroed);
   }
   else if ((analog_value_zeroed < -THRESHOLD) && (low_lim == false)){
-    result = -transform(analog_value_zeroed);
+    result = -transform(analog_value_zeroed); //negative because joystick is moving in negative x/y
   }
   return (result);
 }
 
 void loop() {
   // function to feed number from joy_to_move into tic. 
+  tic_energize();
   long velocity_x = joy_to_move(XJOYSTICK, XHIGHLIM, XLOWLIM, x_zero);
   long velocity_y = joy_to_move(YJOYSTICK, YHIGHLIM, YLOWLIM, y_zero);
   ticx.setTargetVelocity(velocity_x);

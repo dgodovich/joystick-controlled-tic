@@ -1,12 +1,12 @@
 #include <Tic.h>
 
-#define XHIGHLIM 0
+#define XHIGHLIM 4
 #define XLOWLIM 1
 #define YHIGHLIM 2
 #define YLOWLIM 3
 #define XJOYSTICK 22
-#define YJOYSTICK 23
-#define SELECTBUTTON 10 // all pins where arbitrarily chosen
+#define YJOYSTICK 21
+#define SELECTBUTTON 0 // all pins were arbitrarily chosen
 #define THRESHOLD 20 //dead space for joystick zero
 
 TicI2C ticx(14);
@@ -14,6 +14,14 @@ TicI2C ticy(15);
 
 int x_zero = 0;
 int y_zero = 0;
+
+void tic_initialize(){
+  //initialize all the tic things - start I2C communication and get the tic ready.
+  Wire.begin();
+  delay(20);
+  ticx.exitSafeStart();
+  ticy.exitSafeStart();
+}
 
 void setup() {
   // set all input pins for limits, joystick. Also set zero value for joystick when it is in neutral position
@@ -26,30 +34,16 @@ pinMode(YJOYSTICK, INPUT);
 pinMode(SELECTBUTTON, INPUT_PULLUP); //when select button is pressed, it shorts to ground so input_pullup is the best option
 x_zero = analogRead(XJOYSTICK);
 y_zero = analogRead(YJOYSTICK);
-}
-
-void tic_initialize(){
-  //initialize all the tic things - start I2C communication and get the tic ready.
-  Wire.begin();
-  delay(20);
-  ticx.exitSafeStart();
-  ticy.exitSafeStart();
-}
-
 tic_initialize();
+}
 
-void tic_energize(){
+void tic_toggle_energize(TicI2C tic){
   //change the energy state of the motor based on input from the tic and controlled by the joystick select button
-  if digitalRead(SELECTBUTTON) == HIGH{
-    break;
-  }
-  else if digitalRead(SELECTBUTTON) == LOW{
-    bool state = tic.getEnergized();
-    if state == true{
-      tic.Deenergize();
-    }else if state == false{
-      tic.Energize();
-    }
+  bool state = tic.getEnergized();
+  if (state){
+    tic.deenergize();
+  }else {
+    tic.energize();
   }
 }
 
@@ -65,8 +59,10 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
    * has not been reached. Call math function on the joystick value to generate a number which you feed into the tic in the next function.
    */ 
   long result = 0;
-  bool high_lim = digitalRead(h_lim_pin);
-  bool low_lim = digitalRead(l_lim_pin);
+//  bool high_lim = digitalRead(h_lim_pin);
+//  bool low_lim = digitalRead(l_lim_pin);
+  bool high_lim = false;
+  bool low_lim = false;
   int analog_value = analogRead(joystick_pin);
   int analog_value_zeroed = analog_value - zero;
 
@@ -81,7 +77,10 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
 
 void loop() {
   // function to feed number from joy_to_move into tic. 
-  tic_energize();
+  if (!digitalRead(SELECTBUTTON)){
+    tic_toggle_energize(ticx);
+    tic_toggle_energize(ticy);
+  }
   long velocity_x = joy_to_move(XJOYSTICK, XHIGHLIM, XLOWLIM, x_zero);
   long velocity_y = joy_to_move(YJOYSTICK, YHIGHLIM, YLOWLIM, y_zero);
   ticx.setTargetVelocity(velocity_x);

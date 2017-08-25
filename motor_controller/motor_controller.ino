@@ -12,13 +12,18 @@
 TicI2C ticx(14);
 TicI2C ticy(15);
 
+unsigned long last_energize_toggle = 0;
 int x_zero = 0;
 int y_zero = 0;
+bool select_state = true;
+bool select_serviced = false;
 
 void tic_initialize(){
   //initialize all the tic things - start I2C communication and get the tic ready.
   Wire.begin();
   delay(20);
+  ticx.reset();
+  ticy.reset();
   ticx.exitSafeStart();
   ticy.exitSafeStart();
 }
@@ -35,6 +40,7 @@ pinMode(SELECTBUTTON, INPUT_PULLUP); //when select button is pressed, it shorts 
 x_zero = analogRead(XJOYSTICK);
 y_zero = analogRead(YJOYSTICK);
 tic_initialize();
+last_energize_toggle = millis();
 }
 
 void tic_toggle_energize(TicI2C tic){
@@ -44,13 +50,14 @@ void tic_toggle_energize(TicI2C tic){
     tic.deenergize();
   }else {
     tic.energize();
+    tic.exitSafeStart();
   }
 }
 
 long transform(int analog_value){
   //do math on the analog value from the joystick. subtract so that once threshold is crossed, number starts from 0 and not threshold^2.
-  int threshold_removed = analog_value - THRESHOLD;
-  return (threshold_removed*threshold_removed);
+  int scalar = 45;  // empirically derived
+  return (-pow(scalar * analog_value, 2));
 }
 
 long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
@@ -67,20 +74,27 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
   int analog_value_zeroed = analog_value - zero;
 
   if ((analog_value_zeroed > THRESHOLD) && (high_lim == false)){
-    result = transform(analog_value_zeroed);
+    result = transform(analog_value_zeroed - THRESHOLD);
   }
   else if ((analog_value_zeroed < -THRESHOLD) && (low_lim == false)){
-    result = -transform(analog_value_zeroed); //negative because joystick is moving in negative x/y
+    result = -transform(analog_value_zeroed + THRESHOLD); //negative because joystick is moving in negative x/y
   }
   return (result);
 }
 
 void loop() {
   // function to feed number from joy_to_move into tic. 
-  if (!digitalRead(SELECTBUTTON)){
+  select_state = digitalRead(SELECTBUTTON);
+  if (!select_state && !select_serviced && (millis() - last_energize_toggle > 50)){
     tic_toggle_energize(ticx);
     tic_toggle_energize(ticy);
+    last_energize_toggle = millis();
+    select_serviced = true;  // we've already serviced this button press, so don't service it again.
   }
+  if (select_serviced && select_state){
+    select_serviced = false;  // the button is unpressed, so next time it is pressed we will service it.
+  }
+  
   long velocity_x = joy_to_move(XJOYSTICK, XHIGHLIM, XLOWLIM, x_zero);
   long velocity_y = joy_to_move(YJOYSTICK, YHIGHLIM, YLOWLIM, y_zero);
   ticx.setTargetVelocity(velocity_x);

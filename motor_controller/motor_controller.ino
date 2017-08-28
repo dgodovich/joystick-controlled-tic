@@ -24,8 +24,7 @@ void tic_initialize(){
   delay(20);
   ticx.reset();
   ticy.reset();
-  ticx.exitSafeStart();
-  ticy.exitSafeStart();
+  delay(20);  // wait after reset as i2c becomes unresponsive.
 }
 
 void setup() {
@@ -54,8 +53,38 @@ void tic_toggle_energize(TicI2C tic){
   }
 }
 
+void tic_toggle_energize(TicI2C tic_x, TicI2C tic_y){
+  /* this will toggle the energize state of both tics. It will keep the two tics synchronized - ie if one
+  tic deenergizes without the other due to an error, the function will recogize this and deenergize both tics to
+  keep them in the same state and prevent them from alternating between opposite states in subsequent calls.. */
+
+  bool tic_x_energized = tic_x.getEnergized();
+  bool tic_y_energized = tic_y.getEnergized();
+  if (!tic_y_energized && !tic_x_energized){  // if both are deactivated, activate them.
+    tic_y.energize();
+    tic_x.energize();
+    tic_y.exitSafeStart();
+    tic_x.exitSafeStart();
+  }
+  else if (tic_y_energized ^ tic_x_energized){  // only one is energized, deenergize both to sync them.
+    if (tic_y_energized){
+      tic_y.deenergize();
+    }
+    else if (tic_x_energized) {
+      tic_x.deenergize();
+    }
+  }
+  else{  // both are energized, so deenergize them.
+    tic_x.deenergize();
+    tic_y.deenergize();
+  }
+  return;
+}
+
+
 long transform(int analog_value){
-  //do math on the analog value from the joystick. subtract so that once threshold is crossed, number starts from 0 and not threshold^2.
+  /* do math on the analog value from the joystick. subtract so that once threshold is crossed, number starts from 0
+  and not threshold^2. */
   int scalar = 45;  // empirically derived
   return (-pow(scalar * analog_value, 2));
 }
@@ -86,8 +115,7 @@ void loop() {
   // function to feed number from joy_to_move into tic. 
   select_state = digitalRead(SELECTBUTTON);
   if (!select_state && !select_serviced && (millis() - last_energize_toggle > 50)){
-    tic_toggle_energize(ticx);
-    tic_toggle_energize(ticy);
+    tic_toggle_energize(ticx, ticy);
     last_energize_toggle = millis();
     select_serviced = true;  // we've already serviced this button press, so don't service it again.
   }

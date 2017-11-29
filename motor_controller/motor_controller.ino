@@ -12,11 +12,15 @@
 TicI2C ticx(14);
 TicI2C ticy(15);
 
-unsigned long last_energize_toggle = 0;
-int x_zero = 0;
+unsigned long last_energize_toggle = 0;  // time of last energize/deenergize action for debounce
+int x_zero = 0;  // set to joystick input value at initialization for comparison.
 int y_zero = 0;
 bool select_state = true;
 bool select_serviced = false;
+unsigned long last_input_time = 0;  // time of last input in millis
+unsigned long timeout = 300000;  // how long to wait in millis from last input to motor shutoff (5 minutes).
+bool timed_out = false;  // if we've timed out, set true. set false on next initialization.
+
 
 void tic_initialize(){
   //initialize all the tic things - start I2C communication and get the tic ready.
@@ -42,6 +46,7 @@ tic_initialize();
 last_energize_toggle = millis();
 }
 
+
 void tic_toggle_energize(TicI2C tic){
   //change the energy state of the motor based on input from the tic and controlled by the joystick select button
   bool state = tic.getEnergized();
@@ -52,6 +57,7 @@ void tic_toggle_energize(TicI2C tic){
     tic.exitSafeStart();
   }
 }
+
 
 void tic_toggle_energize(TicI2C tic_x, TicI2C tic_y){
   /* this will toggle the energize state of both tics. It will keep the two tics synchronized - ie if one
@@ -82,12 +88,22 @@ void tic_toggle_energize(TicI2C tic_x, TicI2C tic_y){
 }
 
 
+void tic_deenergize(TicI2C tic){
+  // turns off motor controllers if energized, used for timeout protection code.
+  bool state = tic.getEnergized();
+  if (state){
+    tic.deenergize();
+  }
+}
+
+
 long transform(int analog_value){
   /* do math on the analog value from the joystick. subtract so that once threshold is crossed, number starts from 0
   and not threshold^2. */
   int scalar = 45;  // empirically derived
   return (-pow(scalar * analog_value, 2));
 }
+
 
 long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
   /* parameters are the pins that you read the limits from, the direction joystick pin, and the zero value for the neutral position of the joystick.
@@ -111,10 +127,12 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
   return (result);
 }
 
+
 void loop() {
   // function to feed number from joy_to_move into tic. 
   select_state = digitalRead(SELECTBUTTON);
   if (!select_state && !select_serviced && (millis() - last_energize_toggle > 50)){
+    timed_out = false;  //we're (re)initializing the tics so we're definitely not timed out.
     tic_toggle_energize(ticx, ticy);
     last_energize_toggle = millis();
     select_serviced = true;  // we've already serviced this button press, so don't service it again.
@@ -127,5 +145,13 @@ void loop() {
   long velocity_y = joy_to_move(YJOYSTICK, YHIGHLIM, YLOWLIM, y_zero);
   ticx.setTargetVelocity(velocity_x);
   ticy.setTargetVelocity(velocity_y);
-}
 
+  if (!select_state || velocity_x || velocity_y){
+    last_input_time = millis();
+  }
+  else if (!timed_out && millis() - last_input_time > timeout){
+    tic_deenergize(ticx);
+    tic_deenergize(ticy);
+    timed_out = true; // we're timed out, so we don't have to continue to do this.
+  }
+}

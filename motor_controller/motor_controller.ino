@@ -7,7 +7,9 @@
 #define XJOYSTICK 22
 #define YJOYSTICK 21
 #define SELECTBUTTON 0 // all pins were arbitrarily chosen
-#define THRESHOLD 20 //dead space for joystick zero
+#define THRESHOLD 5 //dead space for joystick zero
+#define CUBIC_SCALAR  5
+#define LINEAR_SCALAR 2
 
 TicI2C ticx(14);
 TicI2C ticy(15);
@@ -100,8 +102,8 @@ void tic_deenergize(TicI2C tic){
 long transform(int analog_value){
   /* do math on the analog value from the joystick. subtract so that once threshold is crossed, number starts from 0
   and not threshold^2. */
-  int scalar = 45;  // empirically derived
-  return (-pow(scalar * analog_value, 2));
+//  int scalar = 3;  // empirically derived
+  return (-CUBIC_SCALAR * pow(analog_value, 3) - LINEAR_SCALAR * analog_value);
 }
 
 
@@ -122,7 +124,7 @@ long joy_to_move(int joystick_pin, int h_lim_pin, int l_lim_pin, int zero){
     result = transform(analog_value_zeroed - THRESHOLD);
   }
   else if ((analog_value_zeroed < -THRESHOLD) && (low_lim == false)){
-    result = -transform(analog_value_zeroed + THRESHOLD); //negative because joystick is moving in negative x/y
+    result = transform(analog_value_zeroed + THRESHOLD); //negative because joystick is moving in negative x/y
   }
   return (result);
 }
